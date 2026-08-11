@@ -20,6 +20,24 @@ PING_INTERVAL_SECS = 60
 PING_TIMEOUT_SECS = 600
 
 
+def _decode_openpi_markers(obj):
+    """Decode openpi-client's numpy markers, which msgpack-numpy leaves as dicts.
+
+    vLLM-Omni's OpenPI endpoint packs arrays as ``{__ndarray__, dtype, shape,
+    data}``; the msgpack-numpy package only knows its own ``nd`` markers.
+    """
+    if isinstance(obj, dict):
+        if obj.get("__ndarray__"):
+            array = np.frombuffer(obj["data"], dtype=np.dtype(obj["dtype"]))
+            return array.reshape(tuple(obj["shape"])).copy()
+        if obj.get("__npgeneric__"):
+            return np.dtype(obj["dtype"]).type(obj["data"])
+        return {key: _decode_openpi_markers(value) for key, value in obj.items()}
+    if isinstance(obj, list):
+        return [_decode_openpi_markers(value) for value in obj]
+    return obj
+
+
 class DreamZeroWebsocketClient:
     """Websocket client that adds endpoint field for DreamZero server."""
 
@@ -84,7 +102,13 @@ class DreamZeroWebsocketClient:
             response = self._ws.recv()
         if isinstance(response, str):
             raise RuntimeError(f"Error in inference server:\n{response}")
-        return msgpack_numpy.unpackb(response)
+        result = _decode_openpi_markers(msgpack_numpy.unpackb(response))
+        if isinstance(result, dict) and result.get("type") == "error":
+            raise RuntimeError(f"Error in inference server:\n{result.get('message')}")
+        if isinstance(result, np.ndarray):
+            # vLLM-Omni replies with a bare action array; upstream wraps it in a dict.
+            return {"actions": result}
+        return result
 
     def reset(self, reset_info: dict = None) -> None:
         if reset_info is None:
