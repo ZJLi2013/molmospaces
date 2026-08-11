@@ -33,6 +33,24 @@ def _as_text(value) -> str:
     return value.decode() if isinstance(value, bytes) else str(value)
 
 
+def _dump_model_input(model_input: dict) -> None:
+    """Save what was actually sent to the policy, for offline replay.
+
+    Set ``DZ_DUMP_OBS`` to a directory to enable. The world model can then be
+    re-run on the identical observations offline (e.g. to decode its predicted
+    video), instead of an approximation with zeroed robot state.
+    """
+    out_dir = os.environ.get("DZ_DUMP_OBS")
+    if not out_dir:
+        return
+    os.makedirs(out_dir, exist_ok=True)
+    index = len(os.listdir(out_dir))
+    np.savez(
+        os.path.join(out_dir, f"obs_{index:03d}.npz"),
+        **{key: np.asarray(value) for key, value in model_input.items()},
+    )
+
+
 def _decode_openpi_markers(obj):
     """Decode openpi-client's numpy markers, which msgpack-numpy leaves as dicts.
 
@@ -240,6 +258,7 @@ class DreamZero_Policy(InferencePolicy):
         if self.starting_time is None:
             self.starting_time = time.time()
         if self.actions_buffer is None or self.current_buffer_index >= self.chunk_size:
+            _dump_model_input(model_input)
             result = self.model.infer(model_input)
             self.actions_buffer = result["actions"]
             self.current_buffer_index = 0
