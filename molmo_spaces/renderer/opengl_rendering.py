@@ -84,7 +84,12 @@ class MjOpenGLRenderer(MjAbstractRenderer):
             try:
                 import torch
 
-                if torch.cuda.is_available():
+                # ROCm torch reports cuda as available, but AMD compute-only GPUs
+                # (gfx942/MI300, gfx950) have no graphics pipeline, so EGL cannot
+                # create a context ("radeonsi: can't create a graphics context on a
+                # compute chip"). Leaving device_id as None falls back to MuJoCo's
+                # own GLContext, which honors MUJOCO_GL=osmesa.
+                if torch.cuda.is_available() and torch.version.hip is None:
                     device_id = 0
             except ImportError:
                 pass
