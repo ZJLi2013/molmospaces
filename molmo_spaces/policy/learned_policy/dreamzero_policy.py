@@ -20,6 +20,19 @@ PING_INTERVAL_SECS = 60
 PING_TIMEOUT_SECS = 600
 
 
+def _marker_get(obj: dict, key: str):
+    """Look a marker field up under either a str or a bytes key.
+
+    The server writes bytes literals, which msgpack keeps as bin, while plain
+    Python strings come back as str.
+    """
+    return obj.get(key, obj.get(key.encode()))
+
+
+def _as_text(value) -> str:
+    return value.decode() if isinstance(value, bytes) else str(value)
+
+
 def _decode_openpi_markers(obj):
     """Decode openpi-client's numpy markers, which msgpack-numpy leaves as dicts.
 
@@ -27,11 +40,13 @@ def _decode_openpi_markers(obj):
     data}``; the msgpack-numpy package only knows its own ``nd`` markers.
     """
     if isinstance(obj, dict):
-        if obj.get("__ndarray__"):
-            array = np.frombuffer(obj["data"], dtype=np.dtype(obj["dtype"]))
-            return array.reshape(tuple(obj["shape"])).copy()
-        if obj.get("__npgeneric__"):
-            return np.dtype(obj["dtype"]).type(obj["data"])
+        if _marker_get(obj, "__ndarray__"):
+            dtype = np.dtype(_as_text(_marker_get(obj, "dtype")))
+            array = np.frombuffer(_marker_get(obj, "data"), dtype=dtype)
+            return array.reshape(tuple(_marker_get(obj, "shape"))).copy()
+        if _marker_get(obj, "__npgeneric__"):
+            dtype = np.dtype(_as_text(_marker_get(obj, "dtype")))
+            return dtype.type(_marker_get(obj, "data"))
         return {key: _decode_openpi_markers(value) for key, value in obj.items()}
     if isinstance(obj, list):
         return [_decode_openpi_markers(value) for value in obj]
@@ -103,8 +118,8 @@ class DreamZeroWebsocketClient:
         if isinstance(response, str):
             raise RuntimeError(f"Error in inference server:\n{response}")
         result = _decode_openpi_markers(msgpack_numpy.unpackb(response))
-        if isinstance(result, dict) and result.get("type") == "error":
-            raise RuntimeError(f"Error in inference server:\n{result.get('message')}")
+        if isinstance(result, dict) and _marker_get(result, "type") == "error":
+            raise RuntimeError(f"Error in inference server:\n{_marker_get(result, 'message')}")
         if isinstance(result, np.ndarray):
             # vLLM-Omni replies with a bare action array; upstream wraps it in a dict.
             return {"actions": result}
