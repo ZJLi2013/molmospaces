@@ -161,6 +161,9 @@ class DreamZero_Policy(InferencePolicy):
 
     def obs_to_model_input(self, obs):
         # self.render(obs)
+        # The eval loop hands policies a batched list, one observation per env.
+        if isinstance(obs, list | tuple):
+            obs = obs[0]
         prompt = self.task.get_task_description()
         grip = np.clip(obs["qpos"]["gripper"][0] / 0.824033, 0, 1)
         if grip < 0.1:
