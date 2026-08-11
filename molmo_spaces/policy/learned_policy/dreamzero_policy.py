@@ -23,8 +23,11 @@ PING_TIMEOUT_SECS = 600
 class DreamZeroWebsocketClient:
     """Websocket client that adds endpoint field for DreamZero server."""
 
-    def __init__(self, host: str = "0.0.0.0", port: int = 8000) -> None:
-        self._uri = f"ws://{host}:{port}"
+    def __init__(self, host: str = "0.0.0.0", port: int = 8000, path: str = "") -> None:
+        # Upstream DreamZero serves the policy at the root path; vLLM-Omni registers
+        # it under /v1/realtime/robot/openpi, so the path has to be part of the URI
+        # or the handshake gets a 404. Empty default keeps upstream behaviour.
+        self._uri = f"ws://{host}:{port}{path}"
         self._packer = msgpack_numpy.Packer()
         self._ws, self._server_metadata = self._wait_for_server()
         # store the URI that actually worked so reconnects reuse it
@@ -131,6 +134,7 @@ class DreamZero_Policy(InferencePolicy):
     def _prepare_remote_model(self):
         host = self.remote_config.get("host", "localhost")
         port = self.remote_config.get("port", 6000)
+        path = self.remote_config.get("path", "")
 
         max_retries = 5
         for attempt in range(max_retries):
@@ -138,8 +142,9 @@ class DreamZero_Policy(InferencePolicy):
                 self.model = DreamZeroWebsocketClient(
                     host=host,
                     port=port,
+                    path=path,
                 )
-                log.info(f"Successfully connected to DreamZero model at {host}:{port}")
+                log.info(f"Successfully connected to DreamZero model at {host}:{port}{path}")
                 break
             except Exception as e:
                 if attempt < max_retries - 1:
