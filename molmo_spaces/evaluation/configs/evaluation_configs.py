@@ -303,6 +303,10 @@ class DreamZeroPolicyEvalConfig(JsonBenchmarkEvalConfig):
     robot_config: FrankaRobotConfig = FrankaRobotConfig()
     policy_config: DreamZeroPolicyConfig = DreamZeroPolicyConfig()
     policy_dt_ms: float = 66.0
+    # 与 PiPolicyEvalConfig 对齐。基类默认 False 会让 judge_success() 只在跑满 horizon
+    # 之后看末状态，于是「抓起来又放下」记 0 —— 实测有 rollout 抬升 5.4 cm、success 连续
+    # 26 帧，仍被记成失败。
+    end_on_success: bool = True
 
     def model_post_init(self, __context):
         super().model_post_init(__context)
