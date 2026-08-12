@@ -31,7 +31,9 @@ class DreamZeroPolicyConfig(BasePolicyConfig):
     remote_config: dict = dict(host="localhost", port=0000)
     grasping_type: str = "binary"
     grasping_threshold: float = 0.5
-    chunk_size: int = 24
+    # The model predicts 24 actions, but at policy_dt_ms=66 executing all of them means
+    # 1.6 s of open loop, far longer than a grasp tolerates. Replan every 8 like PiPolicy.
+    chunk_size: int = 8
 
     policy_cls: type = None
     policy_factory: PolicyFactory | None = None
